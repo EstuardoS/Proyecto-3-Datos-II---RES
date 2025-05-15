@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  api:
+    build: ./api
+    container_name: ad-api
+    ports:
+      - "8000:8000"
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - POSTGRES_HOST=timescaledb
+      - INFLUXDB_HOST=influxdb
+    depends_on:
+      - rabbitmq
+      - timescaledb
+      - influxdb
+    volumes:
+      - ./api:/app
+
+  worker:
+    build: ./worker
+    container_name: ad-worker
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=admintoken
+      - INFLUXDB_ORG=adorg
+      - INFLUXDB_BUCKET=adbucket
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minio
+      - MINIO_SECRET_KEY=minio123
+    depends_on:
+      - rabbitmq
+      - influxdb
+      - minio
+    volumes:
+      - ./worker:/app
+    command: ["python", "consumer.py"]
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    container_name: timescaledb
+    environment:
+      - POSTGRES_DB=metrics
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123
+      - DOCKER_INFLUXDB_INIT_ORG=adorg
+      - DOCKER_INFLUXDB_INIT_BUCKET=adbucket
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=admintoken
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - timescaledb
+      - influxdb
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minio
+      - MINIO_ROOT_PASSWORD=minio123
+    volumes:
+      - minio-data:/data
+
+volumes:
+  minio-data:
